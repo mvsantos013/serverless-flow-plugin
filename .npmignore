@@ -1,0 +1,12 @@
+test
+coverage
+.github
+.husky
+.vscode
+node_modules
+src
+.eslintignore
+.eslintrc.js
+.gitignore
+.npmignore
+.prettierrc
