@@ -6,9 +6,23 @@ export type CustomService = Serverless['service'] & {
 }
 
 // Serverless Flow plugin custom parameters
-export type ServerlessFlowParams = {
+export interface ServerlessFlowParams {
   resourcesPrefix?: string
   resourcesSuffix?: string
   stateMachinesDirectory?: string
   tasksDirectory?: string
+}
+
+// Parameters for a task
+export interface TaskParams {
+  taskName: string
+  iamRoleStatements?: Record<string, unknown>[]
+}
+
+// Parameters for an ECS task
+export interface EcsTaskParams extends TaskParams {
+  cpu: number
+  memory: number
+  ephemeralStorage?: number
+  ecrRepositoryKeepMaxImages?: number
 }
