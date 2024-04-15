@@ -1,20 +1,18 @@
 import { EcsTaskParams } from '../types'
-import { DEFAULT_ECS_TASK_PARAMS } from '../config'
 
 export const getEcsTaskResources = (
   prefix: string,
   suffix: string,
   taskParams: EcsTaskParams,
 ): Record<string, unknown> => {
-  const params = { ...DEFAULT_ECS_TASK_PARAMS, ...taskParams }
   const {
     taskName,
-    iamRoleStatements,
+    iamRolePolicyStatements,
     cpu,
     memory,
     ephemeralStorage,
     ecrRepositoryKeepMaxImages,
-  } = params
+  } = taskParams
   return {
     [`${taskName}TaskDefinition`]: {
       Type: 'AWS::ECS::TaskDefinition',
@@ -95,7 +93,7 @@ export const getEcsTaskResources = (
             PolicyName: `${prefix}${taskName}TaskPolicy${suffix}`,
             PolicyDocument: {
               Version: '2012-10-17',
-              Statement: iamRoleStatements,
+              Statement: iamRolePolicyStatements,
             },
           },
         ],
@@ -104,7 +102,9 @@ export const getEcsTaskResources = (
     [`${taskName}TaskEcrRepository`]: {
       Type: 'AWS::ECR::Repository',
       Properties: {
-        RepositoryName: `${prefix}_${taskName}_${suffix}`.toLowerCase(),
+        RepositoryName: `${prefix}_${taskName}_${suffix}`
+          .toLowerCase()
+          .replace('-', ''),
         LifecyclePolicy: {
           LifecyclePolicyText: `'{"rules":[{"rulePriority":1,"description":"Keep only last ${ecrRepositoryKeepMaxImages} images","selection":{"tagStatus":"untagged","countType":"imageCountMoreThan","countNumber": ${ecrRepositoryKeepMaxImages}},"action":{"type":"expire"}}]}'`,
           RegistryId: '${aws:accountId}',

@@ -1,52 +1,80 @@
 import type Serverless from 'serverless'
 import type Plugin from 'serverless/classes/Plugin'
+import type { CustomService } from './types'
+import { Wrapper } from './wrapper'
 
+/**
+ * Serverless Flow Plugin for the Serverless Framework.
+ *
+ * This plugin enhances the capabilities of the Serverless Framework by providing seamless
+ * integration with AWS Step Functions. It empowers developers to define and deploy Step Functions
+ * workflows alongside their serverless resources (Lambda functions, ECS tasks), streamlining
+ * serverless application orchestration.
+ */
 class ServerlessFlowPlugin implements Plugin {
   public readonly serverless: Serverless
   public readonly options: Serverless.Options
+  public readonly logger: Plugin.Logging
 
-  constructor(serverless: Serverless, options: Serverless.Options) {
+  /**
+   * Constructor for the ServerlessFlowPlugin class.
+   * @param serverless A reference to the Serverless application instance.
+   * @param options The user-provided options for the plugin.
+   * @param logger A logger object for logging messages.
+   */
+  constructor(
+    serverless: Serverless,
+    options: Serverless.Options,
+    logger: Plugin.Logging,
+  ) {
     this.serverless = serverless
     this.options = options
+    this.logger = logger
   }
 
-  public commands: Plugin.Commands = {
-    welcome: {
-      usage: 'Helps you start your first Serverless plugin',
-      lifecycleEvents: ['hello', 'world'],
-      options: {
-        message: {
-          usage:
-            'Specify the message you want to deploy ' +
-            '(e.g. "--message \'My Message\'" or "-m \'My Message\'")',
-          required: true,
-          shortcut: 'm',
-        },
-      },
-    },
-  }
-
+  // Add hook for the initialize lifecycle event
   public hooks: Plugin.Hooks = {
-    'before:welcome:hello': this.beforeWelcome.bind(this),
-    'welcome:hello': this.welcomeUser.bind(this),
-    'welcome:world': this.displayHelloMessage.bind(this),
-    'after:welcome:world': this.afterHelloWorld.bind(this),
+    initialize: this.addResourcesDefinitions.bind(this),
   }
 
-  beforeWelcome(): void {
-    this.serverless.cli.log('Hello from Serverless!')
-  }
+  /**
+   * Core logic for creating resources in the Serverless application.
+   * It adds some base resources and creates additional resources as needed.
+   * The additional resources that will be added depends on the *.sf.yml and task.yml
+   * files created by the developer.
+   */
+  private async addResourcesDefinitions(): Promise<void> {
+    const service: CustomService = this.serverless.service
+    const wrapper: Wrapper = new Wrapper(this.serverless, this.logger)
 
-  welcomeUser(): void {
-    this.serverless.cli.log('Your message:')
-  }
+    // Get shared resources and add them to the service
+    const baseResources = wrapper.getBaseResources()
+    if (service.resources === undefined) service.resources = {}
+    if (service.resources.Resources === undefined)
+      service.resources.Resources = {}
+    service.resources.Resources = {
+      ...service.resources.Resources,
+      ...baseResources,
+    }
 
-  displayHelloMessage(): void {
-    this.serverless.cli.log(`${this.options.message}`)
-  }
+    // Get the Step Functions state machines definitions from *.sf.yml files
+    const stateMachines: Record<string, unknown> =
+      await wrapper.getStateMachinesDefinitions()
+    service.stepFunctions = { stateMachines: { ...stateMachines } }
+    if (Object.keys(stateMachines).length > 0) {
+      this.logger.log.debug(
+        `The following state machines were found and will be created:\n - ${Object.keys(
+          stateMachines,
+        ).join('\n - ')}\n`,
+      )
+    }
 
-  afterHelloWorld(): void {
-    this.serverless.cli.log('Please come again!')
+    // Get all resources for tasks that were defined in task.yml files
+    const tasksResources = await wrapper.getTasksResources()
+    service.resources.Resources = {
+      ...service.resources.Resources,
+      ...tasksResources,
+    }
   }
 }
 
