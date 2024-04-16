@@ -1,4 +1,3 @@
-// import * as yaml from 'js-yaml'
 import * as utils from './utils'
 import type Serverless from 'serverless'
 import type Plugin from 'serverless/classes/Plugin'
@@ -107,7 +106,7 @@ export class Wrapper {
       if (!file.endsWith('task.yml')) continue
       const params: TaskParams = await this.serverless.yamlParser.parse(file)
       const { resourcesPrefix, resourcesSuffix } = this.serverlessFlowParams
-      const taskResources = templates.getTaskResources(
+      const taskResources: Record<string, unknown> = templates.getTaskResources(
         this.stage,
         resourcesPrefix,
         resourcesSuffix,

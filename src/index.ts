@@ -50,6 +50,13 @@ class ServerlessFlowPlugin implements Plugin {
     const service: CustomService = this.serverless.service
     const wrapper: Wrapper = new Wrapper(this.serverless, this.logger)
 
+    if (service.provider.name !== 'aws') {
+      this.logger.log.warning(
+        'ServerlessFlow plugin only supports AWS provider. Skipping resource creation.',
+      )
+      return
+    }
+
     // Get shared resources and add them to the service
     const baseResources = wrapper.getBaseResources()
     if (service.resources === undefined) service.resources = {}
@@ -88,7 +95,7 @@ class ServerlessFlowPlugin implements Plugin {
    */
   private displayCreatedResources(): void {
     this.logger.log.info(
-      '\nThe following resources were created by ServerlessFlow plugin:',
+      '\nThe following AWS resources were created by ServerlessFlow plugin:',
     )
     if (Object.keys(this.createdStateMachines).length > 0) {
       this.logger.log.info('Step Functions:')
