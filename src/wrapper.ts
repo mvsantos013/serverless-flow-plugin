@@ -13,16 +13,20 @@ export class Wrapper {
   public readonly serverless: Serverless
   public readonly logger: Plugin.Logging
   public readonly serverlessFlowParams: ServerlessFlowParams
+  public readonly stage: string
 
   constructor(serverless: Serverless, logger: Plugin.Logging) {
     this.serverless = serverless
     this.logger = logger
+    this.stage = serverless.service.provider.stage
 
     this.serverlessFlowParams = ServerlessFlowParamsSchema.parse(
       serverless.service.custom?.serverlessFlowParams ?? {},
     )
-    this.logger.log.debug(`Using the following Serverless Flow parameters:`)
-    this.logger.log.debug(
+    if (!this.serverlessFlowParams.resourcesSuffix)
+      this.serverlessFlowParams.resourcesSuffix = `-${this.stage}`
+    this.logger.log.verbose(`Using the following Serverless Flow parameters:`)
+    this.logger.log.verbose(
       Object.entries(this.serverlessFlowParams)
         .map(([key, value]) => ` - ${key}: ${value}`)
         .join('\n') + '\n',
@@ -36,7 +40,11 @@ export class Wrapper {
    */
   public getBaseResources = (): Record<string, unknown> => {
     const { resourcesPrefix, resourcesSuffix } = this.serverlessFlowParams
-    return templates.getBaseResources(resourcesPrefix, resourcesSuffix)
+    return templates.getBaseResources(
+      this.stage,
+      resourcesPrefix,
+      resourcesSuffix,
+    )
   }
 
   /**
@@ -100,6 +108,7 @@ export class Wrapper {
       const params: TaskParams = await this.serverless.yamlParser.parse(file)
       const { resourcesPrefix, resourcesSuffix } = this.serverlessFlowParams
       const taskResources = templates.getTaskResources(
+        this.stage,
         resourcesPrefix,
         resourcesSuffix,
         params,

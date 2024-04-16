@@ -1,6 +1,7 @@
 import { EcsTaskParams } from '../types'
 
 export const getEcsTaskResources = (
+  stage: string,
   prefix: string,
   suffix: string,
   taskParams: EcsTaskParams,
@@ -53,7 +54,7 @@ export const getEcsTaskResources = (
               LogDriver: 'awslogs',
               Options: {
                 'awslogs-create-group': true,
-                'awslogs-region': '${self:provider.region}',
+                'awslogs-region': { Ref: 'AWS::Region' },
                 'awslogs-group': `${prefix}${taskName}${suffix}`,
                 'awslogs-stream-prefix': `${taskName}`,
               },
@@ -61,7 +62,7 @@ export const getEcsTaskResources = (
             Environment: [
               {
                 Name: 'STAGE',
-                Value: '${self:provider.stage}',
+                Value: stage,
               },
             ],
           },
@@ -88,15 +89,18 @@ export const getEcsTaskResources = (
             },
           ],
         },
-        Policies: [
-          {
-            PolicyName: `${prefix}${taskName}TaskPolicy${suffix}`,
-            PolicyDocument: {
-              Version: '2012-10-17',
-              Statement: iamRolePolicyStatements,
-            },
-          },
-        ],
+        Policies:
+          iamRolePolicyStatements.length > 0
+            ? [
+                {
+                  PolicyName: `${prefix}${taskName}TaskPolicy${suffix}`,
+                  PolicyDocument: {
+                    Version: '2012-10-17',
+                    Statement: iamRolePolicyStatements,
+                  },
+                },
+              ]
+            : [],
       },
     },
     [`${taskName}TaskEcrRepository`]: {
@@ -106,8 +110,23 @@ export const getEcsTaskResources = (
           .toLowerCase()
           .replace('-', ''),
         LifecyclePolicy: {
-          LifecyclePolicyText: `'{"rules":[{"rulePriority":1,"description":"Keep only last ${ecrRepositoryKeepMaxImages} images","selection":{"tagStatus":"untagged","countType":"imageCountMoreThan","countNumber": ${ecrRepositoryKeepMaxImages}},"action":{"type":"expire"}}]}'`,
-          RegistryId: '${aws:accountId}',
+          LifecyclePolicyText: JSON.stringify({
+            rules: [
+              {
+                rulePriority: 1,
+                description: `Keep only last ${ecrRepositoryKeepMaxImages} images`,
+                selection: {
+                  tagStatus: 'untagged',
+                  countType: 'imageCountMoreThan',
+                  countNumber: ecrRepositoryKeepMaxImages,
+                },
+                action: { type: 'expire' },
+              },
+            ],
+          }),
+          RegistryId: {
+            Ref: 'AWS::AccountId',
+          },
         },
         RepositoryPolicyText: {
           Version: '2008-10-17',

@@ -1,4 +1,5 @@
 export const getBaseResources = (
+  stage: string,
   prefix: string,
   suffix: string,
 ): Record<string, unknown> => {
@@ -109,7 +110,19 @@ export const getBaseResources = (
                     {
                       'Fn::GetAtt': ['ServerlessFlowEcsExecutionRole', 'Arn'],
                     },
-                    'arn:aws:iam::${aws:accountId}:role/' + prefix + '*',
+                    {
+                      'Fn::Join': [
+                        ':',
+                        [
+                          'arn:aws:iam',
+                          '',
+                          {
+                            Ref: 'AWS::AccountId',
+                          },
+                          'role/' + `${prefix}*`,
+                        ],
+                      ],
+                    },
                   ],
                 },
               ],

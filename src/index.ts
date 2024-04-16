@@ -4,7 +4,7 @@ import type { CustomService } from './types'
 import { Wrapper } from './wrapper'
 
 /**
- * Serverless Flow Plugin for the Serverless Framework.
+ * ServerlessFlow plugin for the Serverless Framework.
  *
  * This plugin enhances the capabilities of the Serverless Framework by providing seamless
  * integration with AWS Step Functions. It empowers developers to define and deploy Step Functions
@@ -15,6 +15,8 @@ class ServerlessFlowPlugin implements Plugin {
   public readonly serverless: Serverless
   public readonly options: Serverless.Options
   public readonly logger: Plugin.Logging
+  private createdResources: Record<string, unknown> = {}
+  private createdStateMachines: Record<string, unknown> = {}
 
   /**
    * Constructor for the ServerlessFlowPlugin class.
@@ -35,6 +37,7 @@ class ServerlessFlowPlugin implements Plugin {
   // Add hook for the initialize lifecycle event
   public hooks: Plugin.Hooks = {
     initialize: this.addResourcesDefinitions.bind(this),
+    'after:deploy:finalize': this.displayCreatedResources.bind(this),
   }
 
   /**
@@ -62,7 +65,7 @@ class ServerlessFlowPlugin implements Plugin {
       await wrapper.getStateMachinesDefinitions()
     service.stepFunctions = { stateMachines: { ...stateMachines } }
     if (Object.keys(stateMachines).length > 0) {
-      this.logger.log.debug(
+      this.logger.log.verbose(
         `The following state machines were found and will be created:\n - ${Object.keys(
           stateMachines,
         ).join('\n - ')}\n`,
@@ -74,6 +77,31 @@ class ServerlessFlowPlugin implements Plugin {
     service.resources.Resources = {
       ...service.resources.Resources,
       ...tasksResources,
+    }
+
+    this.createdResources = { ...baseResources, ...tasksResources }
+    this.createdStateMachines = stateMachines
+  }
+
+  /**
+   * Display the resources that were created by ServerlessFlow Plugin.
+   */
+  private displayCreatedResources(): void {
+    this.logger.log.info(
+      '\nThe following resources were created by ServerlessFlow plugin:',
+    )
+    if (Object.keys(this.createdStateMachines).length > 0) {
+      this.logger.log.info('Step Functions:')
+      this.logger.log.info(
+        `${Object.keys(this.createdStateMachines).join('\n - ')}\n`,
+      )
+    }
+
+    if (Object.keys(this.createdResources).length > 0) {
+      this.logger.log.info('Cloudformation Resources:') // list of resources names
+      this.logger.log.info(
+        ` - ${Object.keys(this.createdResources).join('\n - ')}\n`,
+      )
     }
   }
 }

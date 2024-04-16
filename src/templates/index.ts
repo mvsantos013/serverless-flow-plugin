@@ -4,6 +4,7 @@ import { EcsTaskParams, TaskParams, TaskType } from '../types'
 import { EcsTaskParamsSchema } from '../schemas'
 
 const getTaskResources = (
+  stage: string,
   prefix: string,
   suffix: string,
   taskParams: TaskParams,
@@ -12,7 +13,7 @@ const getTaskResources = (
   switch (taskParams.taskType) {
     case TaskType.ECS:
       const params: EcsTaskParams = EcsTaskParamsSchema.parse(taskParams)
-      return getEcsTaskResources(prefix, suffix, params)
+      return getEcsTaskResources(stage, prefix, suffix, params)
     default:
       return {}
   }
