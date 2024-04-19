@@ -1,14 +1,26 @@
 import path from 'path'
 import { readdirSync, statSync } from 'fs'
+import { exec } from 'child_process'
 
 /**
- *
  * @param dir Path to the directory to check for existence.
  * @returns True if the directory exists, false otherwise.
  */
 export const directoryExists = (dir: string): boolean => {
   try {
     return statSync(dir).isDirectory()
+  } catch (error) {
+    return false
+  }
+}
+
+/**
+ * @param file Path to the file to check for existence.
+ * @returns True if the file exists, false otherwise.
+ */
+export const fileExists = (file: string): boolean => {
+  try {
+    return statSync(file).isFile()
   } catch (error) {
     return false
   }
@@ -38,4 +50,26 @@ export const getFiles = (dir: string): string[] => {
     throw new Error(`Error accessing directory: ${dir}. Error: ${error}`) // Handle errors
   }
   return results
+}
+
+/**
+ * Executes a shell command and returns the output.
+ *
+ * @param command The shell command to execute.
+ * @param opt Options to pass to the `exec` function.
+ * @returns A promise that resolves with the output of the shell command.
+ */
+export const executeBashCommand = async (
+  command: string,
+  opt: Record<string, unknown> = {},
+): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    exec(command, opt, (error: Error | null, stdout: string | Buffer) => {
+      if (error) {
+        reject(error)
+        return
+      }
+      resolve(stdout.toString().trim())
+    })
+  })
 }

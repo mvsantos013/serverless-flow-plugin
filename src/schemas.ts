@@ -33,3 +33,9 @@ export const EcsTaskParamsSchema = z.object({
   ephemeralStorage: z.number().optional().default(21),
   ecrRepositoryKeepMaxImages: z.number().optional().default(3),
 })
+
+export const DeployImagesCommandParams = z.object({
+  stage: z.string(),
+  region: z.string(),
+  profile: z.string().optional().default(''),
+})

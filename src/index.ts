@@ -2,6 +2,7 @@ import type Serverless from 'serverless'
 import type Plugin from 'serverless/classes/Plugin'
 import type { CustomService } from './types'
 import { Wrapper } from './wrapper'
+import { deployImages } from './commands/deployImages'
 
 /**
  * ServerlessFlow plugin for the Serverless Framework.
@@ -34,10 +35,35 @@ class ServerlessFlowPlugin implements Plugin {
     this.logger = logger
   }
 
+  // Define the commands that the plugin supports
+  public commands: Plugin.Commands = {
+    'deploy-images': {
+      usage: 'Upload docker images of ECS tasks to ECR.',
+      lifecycleEvents: ['push'],
+      options: {
+        stage: {
+          usage: 'Stage of the service.',
+          required: true,
+          shortcut: 's',
+        },
+        region: {
+          usage: 'AWS region of the service.',
+          required: true,
+          shortcut: 'r',
+        },
+        profile: {
+          usage: 'AWS profile.',
+          required: false,
+        },
+      },
+    },
+  }
+
   // Add hook for the initialize lifecycle event
   public hooks: Plugin.Hooks = {
     initialize: this.addResourcesDefinitions.bind(this),
     'after:deploy:finalize': this.displayCreatedResources.bind(this),
+    'deploy-images:push': this.deployImages.bind(this),
   }
 
   /**
@@ -110,6 +136,13 @@ class ServerlessFlowPlugin implements Plugin {
         ` - ${Object.keys(this.createdResources).join('\n - ')}\n`,
       )
     }
+  }
+
+  /**
+   * Deploy docker images of ECS tasks to ECR.
+   */
+  private deployImages(): void {
+    deployImages(this.serverless, this.options)
   }
 }
 
