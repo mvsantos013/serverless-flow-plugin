@@ -4,6 +4,8 @@ import type Plugin from 'serverless/classes/Plugin'
 import type { ServerlessFlowParams, TaskParams } from './types'
 import { ServerlessFlowParamsSchema } from './schemas'
 import templates from './templates'
+import { readFileSync } from 'fs'
+import { load as loadYaml } from 'js-yaml'
 
 /**
  * Wrapper contains main business logic for aggregating and generating resources.
@@ -24,7 +26,7 @@ export class Wrapper {
     )
     if (!this.serverlessFlowParams.resourcesSuffix)
       this.serverlessFlowParams.resourcesSuffix = `-${this.stage}`
-    this.logger.log.verbose(`Using the following Serverless Flow parameters:`)
+    this.logger.log.verbose(`Using the following ServerlessFlow parameters:`)
     this.logger.log.verbose(
       Object.entries(this.serverlessFlowParams)
         .map(([key, value]) => ` - ${key}: ${value}`)
@@ -44,42 +46,6 @@ export class Wrapper {
       resourcesPrefix,
       resourcesSuffix,
     )
-  }
-
-  /**
-   * Loads and combines all Step Functions in YAML format (*.sf.yml).
-   *
-   * @throws {Error} If there is an error accessing the directory, reading files, or parsing YAML.
-   * @returns STL definitions for all Step Functions found.
-   */
-  public getStateMachinesDefinitions = async (): Promise<
-    Record<string, unknown>
-  > => {
-    try {
-      const dir = this.serverlessFlowParams.stateMachinesDirectory
-      if (!utils.directoryExists(dir)) {
-        this.logger.log.verbose(
-          `No state machine was added because the directory ${dir} does not exist.`,
-        )
-        return {}
-      }
-      let stateMachines: Record<string, unknown> = {}
-      for (const file of utils.getFiles(dir)) {
-        if (!file.endsWith('.sf.yml')) continue
-        const content: Record<string, unknown> =
-          await this.serverless.yamlParser.parse(file)
-        stateMachines = { ...stateMachines, ...content }
-      }
-      if (Object.keys(stateMachines).length === 0) {
-        this.logger.log.verbose(
-          `No state machine was added because the directory ${dir} does not contain any *.sf.yml file.`,
-        )
-        return {}
-      }
-      return stateMachines
-    } catch (error) {
-      throw new Error(`Error while including Step Functions: ${error}`)
-    }
   }
 
   /**
@@ -124,4 +90,40 @@ export class Wrapper {
 
     return resources
   }
+}
+
+/**
+ * Utility function to be called in serverless.yml
+ * It loads and combines all Step Functions in YAML format (*.sf.yml files).
+ */
+export const includeStepFunctions = async ({
+  options,
+  resolveVariable,
+}: {
+  options: Record<string, unknown>
+  resolveVariable: (variableString: string) => string
+}): Promise<Record<string, unknown>> => {
+  let stateMachinesDirectory = ''
+  try {
+    stateMachinesDirectory = await resolveVariable(
+      'self:custom.serverlessFlowParams.stateMachinesDirectory',
+    )
+  } catch {
+    const defaults: Record<string, unknown> = utils.getDefaultsFromSchema(
+      ServerlessFlowParamsSchema,
+    )
+    stateMachinesDirectory = defaults.stateMachinesDirectory as string
+  }
+  if (!utils.directoryExists(stateMachinesDirectory)) return {}
+  let stateMachines: Record<string, unknown> = {}
+  for (const file of utils.getFiles(stateMachinesDirectory)) {
+    if (!file.endsWith('.sf.yml')) continue
+    const content: string = readFileSync(file, 'utf8')
+    const stateMachine: Record<string, unknown> = loadYaml(content) as Record<
+      string,
+      unknown
+    >
+    stateMachines = { ...stateMachines, ...stateMachine }
+  }
+  return stateMachines
 }

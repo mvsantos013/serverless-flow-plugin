@@ -5,6 +5,11 @@ export enum TaskType {
   LAMBDA = 'LAMBDA',
 }
 
+// Add missing property to Serverless type
+export type CustomServerless = Serverless & {
+  configurationInput: CustomService
+}
+
 // Supporting serverless-step-functions plugin types
 export type CustomService = Serverless['service'] & {
   stepFunctions?: { stateMachines?: Record<string, unknown> }

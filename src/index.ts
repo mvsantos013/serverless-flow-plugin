@@ -1,19 +1,20 @@
 import type Serverless from 'serverless'
 import type Plugin from 'serverless/classes/Plugin'
-import type { CustomService } from './types'
+import type { CustomService, CustomServerless } from './types'
 import { Wrapper } from './wrapper'
 import { deployImages } from './commands/deployImages'
+import ServerlessStepFunctions from 'serverless-step-functions'
 
 /**
  * ServerlessFlow plugin for the Serverless Framework.
  *
  * This plugin enhances the capabilities of the Serverless Framework by providing seamless
- * integration with AWS Step Functions. It empowers developers to define and deploy Step Functions
- * workflows alongside their serverless resources (Lambda functions, ECS tasks), streamlining
- * serverless application orchestration.
+ * integration with AWS Step Functions. It's built on top of serverless-step-functions plugin.
+ * It empowers developers to define and deploy Step Functions workflows alongside their serverless
+ * resources (Lambda functions, ECS tasks), streamlining serverless application orchestration.
  */
-class ServerlessFlowPlugin implements Plugin {
-  public readonly serverless: Serverless
+class ServerlessFlowPlugin extends ServerlessStepFunctions {
+  public readonly serverless: CustomServerless
   public readonly options: Serverless.Options
   public readonly logger: Plugin.Logging
   private createdResources: Record<string, unknown> = {}
@@ -26,44 +27,47 @@ class ServerlessFlowPlugin implements Plugin {
    * @param logger A logger object for logging messages.
    */
   constructor(
-    serverless: Serverless,
+    serverless: CustomServerless,
     options: Serverless.Options,
     logger: Plugin.Logging,
   ) {
+    super(serverless, options, logger)
     this.serverless = serverless
     this.options = options
     this.logger = logger
-  }
 
-  // Define the commands that the plugin supports
-  public commands: Plugin.Commands = {
-    'deploy-images': {
-      usage: 'Upload docker images of ECS tasks to ECR.',
-      lifecycleEvents: ['push'],
-      options: {
-        stage: {
-          usage: 'Stage of the service.',
-          required: true,
-          shortcut: 's',
-        },
-        region: {
-          usage: 'AWS region of the service.',
-          required: true,
-          shortcut: 'r',
-        },
-        profile: {
-          usage: 'AWS profile.',
-          required: false,
+    // Define the commands that the plugin supports
+    this.commands = {
+      ...this.commands,
+      'deploy-images': {
+        usage: 'Upload docker images of ECS tasks to ECR.',
+        lifecycleEvents: ['push'],
+        options: {
+          stage: {
+            usage: 'Stage of the service.',
+            required: true,
+            shortcut: 's',
+          },
+          region: {
+            usage: 'AWS region of the service.',
+            required: true,
+            shortcut: 'r',
+          },
+          profile: {
+            usage: 'AWS profile.',
+            required: false,
+          },
         },
       },
-    },
-  }
+    }
 
-  // Add hook for the initialize lifecycle event
-  public hooks: Plugin.Hooks = {
-    initialize: this.addResourcesDefinitions.bind(this),
-    'after:deploy:finalize': this.displayCreatedResources.bind(this),
-    'deploy-images:push': this.deployImages.bind(this),
+    // Add hook for the initialize lifecycle event
+    this.hooks = {
+      ...this.hooks,
+      'after:package:compileEvents': this.addResourcesDefinitions.bind(this),
+      'after:deploy:finalize': this.displayCreatedResources.bind(this),
+      'deploy-images:push': this.deployImages.bind(this),
+    }
   }
 
   /**
@@ -93,17 +97,8 @@ class ServerlessFlowPlugin implements Plugin {
       ...baseResources,
     }
 
-    // Get the Step Functions state machines definitions from *.sf.yml files
     const stateMachines: Record<string, unknown> =
-      await wrapper.getStateMachinesDefinitions()
-    service.stepFunctions = { stateMachines: { ...stateMachines } }
-    if (Object.keys(stateMachines).length > 0) {
-      this.logger.log.verbose(
-        `The following state machines were found and will be created:\n - ${Object.keys(
-          stateMachines,
-        ).join('\n - ')}\n`,
-      )
-    }
+      service.stepFunctions?.stateMachines ?? {}
 
     // Get all resources for tasks that were defined in task.yml files
     const tasksResources = await wrapper.getTasksResources()
@@ -126,7 +121,7 @@ class ServerlessFlowPlugin implements Plugin {
     if (Object.keys(this.createdStateMachines).length > 0) {
       this.logger.log.info('Step Functions:')
       this.logger.log.info(
-        `${Object.keys(this.createdStateMachines).join('\n - ')}\n`,
+        ` - ${Object.keys(this.createdStateMachines).join('\n - ')}\n`,
       )
     }
 

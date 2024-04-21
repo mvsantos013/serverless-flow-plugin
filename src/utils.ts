@@ -1,6 +1,7 @@
 import path from 'path'
 import { readdirSync, statSync } from 'fs'
 import { exec } from 'child_process'
+import * as z from 'zod'
 
 /**
  * @param dir Path to the directory to check for existence.
@@ -72,4 +73,20 @@ export const executeBashCommand = async (
       resolve(stdout.toString().trim())
     })
   })
+}
+
+/**
+ * Retrieves the default values from a Zod schema.
+ * @param schema The Zod schema to extract default values from.
+ * @returns An object with the default values for the schema.
+ */
+export const getDefaultsFromSchema = <Schema extends z.AnyZodObject>(
+  schema: Schema,
+): Record<string, unknown> => {
+  return Object.fromEntries(
+    Object.entries(schema.shape).map(([key, value]) => {
+      if (value instanceof z.ZodDefault) return [key, value._def.defaultValue()]
+      return [key, undefined]
+    }),
+  )
 }
