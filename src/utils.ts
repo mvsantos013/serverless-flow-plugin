@@ -2,6 +2,9 @@ import path from 'path'
 import { readdirSync, statSync } from 'fs'
 import { exec } from 'child_process'
 import * as z from 'zod'
+import { load as loadYaml } from 'js-yaml'
+import templates from './templates'
+import { TaskParams } from './types'
 
 /**
  * @param dir Path to the directory to check for existence.
@@ -89,4 +92,91 @@ export const getDefaultsFromSchema = <Schema extends z.AnyZodObject>(
       return [key, undefined]
     }),
   )
+}
+
+/**
+ * This is used for parsing custom utility functions in yaml files. It works
+ * similar to Step Functions intrinsic functions. Currently, the only supported
+ * function is `ServerlessFlow.Task()`. It abstracts away the definition and referencing
+ * of resources.
+ */
+export class UtilityFunctionsParser {
+  private text: string
+  private readonly rawText: string
+  private readonly tasks: Record<string, TaskParams> = {}
+  private readonly functions: Array<{
+    regex: RegExp
+    handler: (r: RegExp) => void
+  }> = [
+    {
+      regex: /ServerlessFlow\.Task\(([^)]+)\)/g,
+      handler: this.handleTaskFunction.bind(this),
+    },
+  ]
+
+  constructor(text: string, tasks: Record<string, TaskParams> = {}) {
+    this.rawText = text
+    // escape serverless parameters
+    const escapedText = text.replace(/\$\{(.+?)\}|"\$\{(.+?)\}"/g, (match) => {
+      if (!match.startsWith('"')) return `"${match}"`
+      return match
+    })
+    this.text = escapedText
+    this.tasks = tasks
+  }
+
+  /**
+   * Parses all `Serverless.Task()` functions in the text.
+   *
+   */
+  private handleTaskFunction(regex: RegExp): void {
+    let matches: RegExpExecArray | null
+    while ((matches = regex.exec(this.text)) !== null) {
+      const [matchedText, matchContent] = matches
+      const rawConfig = loadYaml(matchContent) as Record<string, unknown>
+      const taskName: string = rawConfig.Name as string
+      if (!taskName)
+        throw new Error(
+          'Property `Name` is required in ServerlessFlow.Task function.',
+        )
+      if (!this.tasks[taskName]) {
+        throw new Error(
+          `Task state with name '${taskName}' was not declared in any task.yml`,
+        )
+      }
+      const taskStateConfig = templates.getTaskStateConfig(
+        this.tasks[taskName],
+        rawConfig,
+      )
+      this.text = this.text.replace(
+        matchedText,
+        JSON.stringify(taskStateConfig),
+      )
+      regex.lastIndex = 0
+    }
+  }
+
+  /**
+   * Parses the text and replaces custom utility functions with their respective values.
+   * @returns The parsed text.
+   */
+  public parse(): string {
+    for (const { regex, handler } of this.functions) handler(regex)
+    return this.text
+  }
+
+  /**
+   * Get original text
+   */
+  public getRawText(): string {
+    return this.rawText
+  }
+
+  /**
+   * Retrieves the parsed text as object.
+   * @returns The parsed text.
+   */
+  public getContent(): Record<string, unknown> {
+    return loadYaml(this.text) as Record<string, unknown>
+  }
 }

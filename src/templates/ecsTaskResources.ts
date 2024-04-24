@@ -1,5 +1,8 @@
 import { EcsTaskParams } from '../types'
 
+/**
+ * Cloudformation resources for a task of type ECS
+ */
 export const getEcsTaskResources = (
   stage: string,
   prefix: string,

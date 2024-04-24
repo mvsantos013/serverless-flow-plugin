@@ -32,6 +32,7 @@ export const deployImages = async function (
 
   const service: CustomService = serverless.service
   const { stage, region, profile } = DeployImagesCommandParams.parse(options)
+  const profileOpt = profile ? `--profile ${profile}` : ''
   const serverlessFlowParams: ServerlessFlowParams =
     ServerlessFlowParamsSchema.parse(service.custom?.serverlessFlowParams ?? {})
   if (!serverlessFlowParams.resourcesSuffix)
@@ -74,12 +75,12 @@ export const deployImages = async function (
       ecrRepositoryResource.Properties.RepositoryName
 
     const accountId = await utils.executeBashCommand(
-      'aws sts get-caller-identity --query "Account" --output text',
+      `aws sts get-caller-identity --query "Account" --output text ${profileOpt}`,
     )
     const repositoryUri = `${accountId}.dkr.ecr.${region}.amazonaws.com/${ecrRepositoryName}`
 
     await utils.executeBashCommand(
-      `aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin ${repositoryUri}`,
+      `aws ecr get-login-password --region ${region} ${profileOpt} | docker login --username AWS --password-stdin ${repositoryUri}`,
     )
     try {
       await utils.executeBashCommand(`docker build -t ${repositoryUri} .`, {

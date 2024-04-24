@@ -103,27 +103,45 @@ export const includeStepFunctions = async ({
   options: Record<string, unknown>
   resolveVariable: (variableString: string) => string
 }): Promise<Record<string, unknown>> => {
+  options
+  const defaults: Record<string, unknown> = utils.getDefaultsFromSchema(
+    ServerlessFlowParamsSchema,
+  )
   let stateMachinesDirectory = ''
   try {
     stateMachinesDirectory = await resolveVariable(
       'self:custom.serverlessFlowParams.stateMachinesDirectory',
     )
   } catch {
-    const defaults: Record<string, unknown> = utils.getDefaultsFromSchema(
-      ServerlessFlowParamsSchema,
-    )
     stateMachinesDirectory = defaults.stateMachinesDirectory as string
   }
+  let tasksDirectory = ''
+  try {
+    tasksDirectory = await resolveVariable(
+      'self:custom.serverlessFlowParams.tasksDirectory',
+    )
+  } catch {
+    tasksDirectory = defaults.tasksDirectory as string
+  }
+  const tasks: Record<string, TaskParams> = {}
+  for (const file of utils.getFiles(tasksDirectory)) {
+    if (!file.endsWith('task.yml')) continue
+    const rawContent: string = readFileSync(file, 'utf8')
+    const taskParams: TaskParams = loadYaml(rawContent) as TaskParams
+    tasks[taskParams.taskName] = taskParams
+  }
+
   if (!utils.directoryExists(stateMachinesDirectory)) return {}
   let stateMachines: Record<string, unknown> = {}
   for (const file of utils.getFiles(stateMachinesDirectory)) {
     if (!file.endsWith('.sf.yml')) continue
-    const content: string = readFileSync(file, 'utf8')
-    const stateMachine: Record<string, unknown> = loadYaml(content) as Record<
-      string,
-      unknown
-    >
+    const rawContent: string = readFileSync(file, 'utf8')
+    const parser: utils.UtilityFunctionsParser =
+      new utils.UtilityFunctionsParser(rawContent, tasks)
+    parser.parse()
+    const stateMachine: Record<string, unknown> = parser.getContent()
     stateMachines = { ...stateMachines, ...stateMachine }
   }
+  console.log(1111, JSON.stringify(stateMachines))
   return stateMachines
 }

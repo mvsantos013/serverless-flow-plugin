@@ -1,3 +1,6 @@
+/**
+ * Basic cloudformation resources for the ServerlessFlow plugin
+ */
 export const getBaseResources = (
   stage: string,
   prefix: string,
