@@ -17,8 +17,11 @@ class ServerlessFlowPlugin extends ServerlessStepFunctions {
   public readonly serverless: CustomServerless
   public readonly options: Serverless.Options
   public readonly logger: Plugin.Logging
+  private wrapper: Wrapper | any = {}
+  private service: CustomService | any = {}
   private createdResources: Record<string, unknown> = {}
   private createdStateMachines: Record<string, unknown> = {}
+  private createdLambdas: Record<string, unknown> = {}
 
   /**
    * Constructor for the ServerlessFlowPlugin class.
@@ -64,6 +67,7 @@ class ServerlessFlowPlugin extends ServerlessStepFunctions {
     // Add hook for the initialize lifecycle event
     this.hooks = {
       ...this.hooks,
+      'before:package:initialize': this.initialize.bind(this),
       'after:package:compileEvents': this.addResourcesDefinitions.bind(this),
       'after:deploy:finalize': this.displayCreatedResources.bind(this),
       'deploy-images:push': this.deployImages.bind(this),
@@ -71,44 +75,63 @@ class ServerlessFlowPlugin extends ServerlessStepFunctions {
   }
 
   /**
-   * Core logic for creating resources in the Serverless application.
-   * It adds some base resources and creates additional resources as needed.
+   * Initialize the ServerlessFlow plugin.
+   */
+  private async initialize(): Promise<void> {
+    this.service = this.serverless.service
+    if (this.service.provider.name !== 'aws') {
+      this.logger.log.error(
+        'ServerlessFlow plugin only supports AWS provider. Please remove the plugin and try again.',
+      )
+      process.exit()
+    }
+
+    // Make sure some properties are defined
+    if (!this.service.resources) this.service.resources = {}
+    if (!this.service.resources.Resources) this.service.resources.Resources = {}
+    if (!this.service.functions) this.service.functions = {}
+
+    this.wrapper = new Wrapper(this.serverless, this.logger)
+  }
+
+  /**
+   * Adds some base resources and creates additional resources as needed.
    * The additional resources that will be added depends on the *.sf.yml and task.yml
    * files created by the developer.
    */
   private async addResourcesDefinitions(): Promise<void> {
-    const service: CustomService = this.serverless.service
-    const wrapper: Wrapper = new Wrapper(this.serverless, this.logger)
-
-    if (service.provider.name !== 'aws') {
-      this.logger.log.warning(
-        'ServerlessFlow plugin only supports AWS provider. Skipping resource creation.',
-      )
-      return
-    }
-
     // Get shared resources and add them to the service
-    const baseResources = wrapper.getBaseResources()
-    if (service.resources === undefined) service.resources = {}
-    if (service.resources.Resources === undefined)
-      service.resources.Resources = {}
-    service.resources.Resources = {
-      ...service.resources.Resources,
-      ...baseResources,
-    }
-
-    const stateMachines: Record<string, unknown> =
-      service.stepFunctions?.stateMachines ?? {}
+    const baseResources = this.wrapper.getBaseResources()
 
     // Get all resources for tasks that were defined in task.yml files
-    const tasksResources = await wrapper.getTasksResources()
-    service.resources.Resources = {
-      ...service.resources.Resources,
+    const tasksResources = await this.wrapper.getTasksResources()
+
+    // Add resources
+    this.service.resources.Resources = {
+      ...this.service.resources.Resources,
+      ...baseResources,
       ...tasksResources,
     }
 
     this.createdResources = { ...baseResources, ...tasksResources }
-    this.createdStateMachines = stateMachines
+    this.createdStateMachines = this.service.stepFunctions?.stateMachines ?? {}
+  }
+
+  /**
+   * Add Lambda functions definitions to the service. It will only add the functions
+   * that were defined in the task.yml files.
+   */
+  private async addFunctionsDefinitions(): Promise<void> {
+    // Get all lambda funtions definitions that were defined in task.yml files
+    const functions = await this.wrapper.getTasksLambdaFunctionDefinitions()
+
+    // Add functions
+    this.service.functions = {
+      ...this.service.functions,
+      ...functions,
+    }
+
+    this.createdLambdas = functions
   }
 
   /**
@@ -118,19 +141,19 @@ class ServerlessFlowPlugin extends ServerlessStepFunctions {
     this.logger.log.info(
       '\nThe following AWS resources were created by ServerlessFlow plugin:',
     )
-    if (Object.keys(this.createdStateMachines).length > 0) {
-      this.logger.log.info('Step Functions:')
-      this.logger.log.info(
-        ` - ${Object.keys(this.createdStateMachines).join('\n - ')}\n`,
-      )
-    }
 
-    if (Object.keys(this.createdResources).length > 0) {
-      this.logger.log.info('Cloudformation Resources:') // list of resources names
-      this.logger.log.info(
-        ` - ${Object.keys(this.createdResources).join('\n - ')}\n`,
-      )
+    const listResources = (
+      resourcesNames: string,
+      resources: Record<string, unknown>,
+    ) => {
+      if (Object.keys(resources).length > 0) {
+        this.logger.log.info(`${resourcesNames}:`)
+        this.logger.log.info(` - ${Object.keys(resources).join('\n - ')}\n`)
+      }
     }
+    listResources('Step Functions', this.createdStateMachines)
+    listResources('Lambda Functions', this.createdLambdas)
+    listResources('Cloudformation Resources', this.createdResources)
   }
 
   /**

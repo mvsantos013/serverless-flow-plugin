@@ -2,6 +2,7 @@ import * as utils from './utils'
 import type Serverless from 'serverless'
 import type Plugin from 'serverless/classes/Plugin'
 import type { ServerlessFlowParams, TaskParams } from './types'
+import { TaskType } from './types'
 import { ServerlessFlowParamsSchema } from './schemas'
 import templates from './templates'
 import { readFileSync } from 'fs'
@@ -78,7 +79,13 @@ export class Wrapper {
         resourcesSuffix,
         params,
       )
-      resources = { ...resources, ...taskResources }
+      // Ignore resources of type lambda because they must be defined in the functions directive
+      const tasksResourcesOnly = Object.fromEntries(
+        Object.entries(taskResources).filter(
+          ([key]) => !key.endsWith('FunctionDefinition'),
+        ),
+      )
+      resources = { ...resources, ...tasksResourcesOnly }
     }
 
     if (Object.keys(resources).length === 0) {
@@ -90,6 +97,52 @@ export class Wrapper {
 
     return resources
   }
+}
+
+/**
+ * Loads and combines all Lambda functions in YAML format to be included in the serverless.yml.
+ * It will only add the functions that were defined in the task.yml files.
+ */
+export const includeFunctions = async ({
+  options,
+  resolveVariable,
+}: {
+  options: Record<string, unknown>
+  resolveVariable: (variableString: string) => string
+}): Promise<Record<string, unknown>> => {
+  options
+  const defaults: Record<string, unknown> = utils.getDefaultsFromSchema(
+    ServerlessFlowParamsSchema,
+  )
+  let tasksDirectory = ''
+  try {
+    tasksDirectory = await resolveVariable(
+      'self:custom.serverlessFlowParams.tasksDirectory',
+    )
+  } catch {
+    tasksDirectory = defaults.tasksDirectory as string
+  }
+  const functions: Record<string, unknown> = {}
+  for (const file of utils.getFiles(tasksDirectory)) {
+    if (!file.endsWith('task.yml')) continue
+    const rawContent: string = readFileSync(file, 'utf8')
+    const taskParams: TaskParams = loadYaml(rawContent) as TaskParams
+    if (taskParams.taskType !== TaskType.LAMBDA) continue
+    const { resourcesPrefix, resourcesSuffix } = defaults
+    const taskResources: Record<string, unknown> = templates.getTaskResources(
+      'dev',
+      resourcesPrefix as string,
+      resourcesSuffix as string,
+      taskParams,
+    )
+    const definitions = Object.fromEntries(
+      Object.entries(taskResources)
+        .filter(([key]) => key.endsWith('FunctionDefinition'))
+        .map(([key, value]) => [key.replace('FunctionDefinition', ''), value]),
+    )
+    Object.assign(functions, definitions)
+  }
+  return functions
 }
 
 /**
@@ -142,6 +195,5 @@ export const includeStepFunctions = async ({
     const stateMachine: Record<string, unknown> = parser.getContent()
     stateMachines = { ...stateMachines, ...stateMachine }
   }
-  console.log(1111, JSON.stringify(stateMachines))
   return stateMachines
 }

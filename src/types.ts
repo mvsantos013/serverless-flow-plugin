@@ -37,3 +37,13 @@ export interface EcsTaskParams extends TaskParams {
   ephemeralStorage: number
   ecrRepositoryKeepMaxImages: number
 }
+
+// Fixing/Extensing the Serverless FunctionDefinition type
+export interface FunctionDefinition extends Serverless.FunctionDefinition {
+  role?: string
+}
+// Parameters for an Lambda task
+export interface LambdaTaskParams extends TaskParams {
+  functionDefinition: FunctionDefinition
+  iamRolePolicyStatements: Record<string, unknown>[]
+}
